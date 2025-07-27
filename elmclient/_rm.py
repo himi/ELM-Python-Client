@@ -26,6 +26,7 @@ from . import rdfxml
 from . import server
 from . import utils
 from . import _newtypesystem
+from . import resource
 
 # used for OSLC Query on types
 typeresources = {
@@ -65,7 +66,7 @@ if False:
         pass
 
 @utils.mixinomatic
-class RMProject(_project._Project):
+class RMProject(_project._Project, resource.Resources_Mixin ):
     # A project
     # NOTE there is a derived class RMComponent used for RM components - it doesn't offer any
     #   functionality, and is a separate class only so it's easier to see whether an instance is a component or the overall project
@@ -1057,7 +1058,7 @@ xmlns:calm="http://jazz.net/xmlns/prod/jazz/calm/1.0/"
     def resolve_modulename_to_uri( self, modulename ):
         # get the query capability base URL
         qcbase = self.get_query_capability_uri("oslc_rm:Requirement")
-        results = self.execute_oslc_query( qcbase, whereterms=[['and', ['dcterms:title','=',f'"{modulename}"'],['rdm_types:ArtifactFormat','=','jazz_rm:Module']]], prefixes={rdfxml.RDF_DEFAULT_PREFIX["dcterms"]:'dcterms',rdfxml.RDF_DEFAULT_PREFIX["rdm_types"]:'rdm_types',rdfxml.RDF_DEFAULT_PREFIX["jazz_rm"]:'jazz_rm'})
+        results = self.execute_oslc_query( qcbase, whereterms=[['and', ['dcterms:title','=',f'"{modulename}"'],['rdf:type','=','jazz_rm:Module']]], prefixes={rdfxml.RDF_DEFAULT_PREFIX["dcterms"]:'dcterms',rdfxml.RDF_DEFAULT_PREFIX["jazz_rm"]:'jazz_rm'})
         logger.debug( f"resolve_modulename_to_uri {results=}" )
         if len( results.keys() ) == 0:
             result = None
@@ -1073,7 +1074,7 @@ xmlns:calm="http://jazz.net/xmlns/prod/jazz/calm/1.0/"
         # for example (remove the')  'rm:rm23/rm_optin_p1/rm_optin_p1 comp2/rm_optin_p1 comp2 Initial Stream'
 #        # get the query capability base URL
 #        qcbase = self.get_query_capability_uri("oslc_rm:Requirement")
-#        results = self.execute_oslc_query( qcbase, whereterms=[['and', ['dcterms:title','=',f'"{modulename}"'],['rdm_types:ArtifactFormat','=','jazz_rm:Module']]], prefixes={rdfxml.RDF_DEFAULT_PREFIX["dcterms"]:'dcterms',rdfxml.RDF_DEFAULT_PREFIX["rdm_types"]:'rdm_types',rdfxml.RDF_DEFAULT_PREFIX["jazz_rm"]:'jazz_rm'})
+#        results = self.execute_oslc_query( qcbase, whereterms=[['and', ['dcterms:title','=',f'"{modulename}"'],['rdf:type','=','jazz_rm:Module']]], prefixes={rdfxml.RDF_DEFAULT_PREFIX["dcterms"]:'dcterms',rdfxml.RDF_DEFAULT_PREFIX["jazz_rm"]:'jazz_rm'})
 #        logger.debug( f"resolve_modulename_to_uri {results=}" )
 #        if len( results.keys() ) == 0:
 #            result = None
@@ -1125,7 +1126,7 @@ xmlns:calm="http://jazz.net/xmlns/prod/jazz/calm/1.0/"
 
 #################################################################################################
 
-class RMComponent(RMProject):
+class RMComponent( RMProject, resource.Resources_Mixin ):
     def __init__(self, name, project_uri, app, is_optin=False, singlemode=False,defaultinit=True, project=None):
         if not project:
             raise Exception( "You must provide a project instance when creating a component" )
@@ -1275,7 +1276,7 @@ class RMComponent(RMProject):
 #################################################################################################
 
 @utils.mixinomatic
-class RMApp(_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_System_Mixin):
+class RMApp (_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_System_Mixin ):
     domain = 'rm'
     project_class = RMProject
     supports_configs = True
@@ -1493,7 +1494,7 @@ class RMApp(_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_Syst
         gcconfiguri = None
         gcapp = allapps.get('gc',None)
         if not gcapp and args.globalconfiguration:
-            raise Exception( "gc app must be specified in APPSTRINGS/-A (after the rm app) to use a global configuration - for exmaple use -A rm,gc" )
+            raise Exception( "gc app must be specified in APPSTRINGS/-A, after the rm app, to use a global configuration - for exmaple use -A rm,gc" )
 
         # most queries need a project and configuration - projects queried without a config will return data from the default configuraiotn (the default component's initial stream)
         if args.all or args.collection or args.module or args.view or args.typename or args.resourceID or args.moduleResourceID or args.coreResourceID or args.schema or args.attributes or args.titles or args.linksOnly or args.history or args.artifact_format=='views':
@@ -1540,7 +1541,7 @@ class RMApp(_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_Syst
 
                         # get the query capability base URL
                         qcbase = gc_query_on.get_query_capability_uri("oslc_config:Configuration")
-                        # query for a configuration with title
+                        # query gcm for a configuration with title
                         print( f"querying for gc config {args.globalconfiguration}" )
                         conf = gc_query_on.execute_oslc_query( qcbase, whereterms=[['dcterms:title','=',f'"{args.globalconfiguration}"']], select=['*'], prefixes={rdfxml.RDF_DEFAULT_PREFIX["dcterms"]:'dcterms'})
                         if len( conf.keys() ) == 0:
@@ -1550,7 +1551,7 @@ class RMApp(_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_Syst
                         gcconfiguri = list(conf.keys())[0]
                         logger.info( f"{gcconfiguri=}" )
                         logger.debug( f"{gcconfiguri=}" )
-                        queryparams['oslc_config.context'] = gcconfiguri
+                        queryparams['oslc_config.context'] = gcconfiguri # a GC configuration
 
                 # check the gc config uri exists - a GET from it shouldn't fail!
                 if not gcapp.check_valid_config_uri(gcconfiguri,raise_exception=False):
@@ -1596,15 +1597,23 @@ class RMApp(_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_Syst
                     queryparams['targetConfigUri'] = targetconfig
                     queryparams['sourceConfigUri'] = config
             else:
+                # opt-out
+                gcconfiguri = None
                 if not args.localconfiguration:
                     args.localconfiguration = f"{args.project} Initial Stream"
                 config = p.get_local_config(args.localconfiguration)
                 queryon=p
             queryon.set_local_config(config,gcconfiguri)
-            queryparams['oslc_config.context'] = config or gcconfiguri
+            if gcconfiguri:
+                queryparams['oslc_config.context'] = gcconfiguri
+            else:
+                queryparams['vvc.configuration'] = config
         if args.artifact_format=='comparison' and args.targetconfiguration:
+            # remove any configuration parameters!
             if 'oslc_config.context' in queryparams:
                 del queryparams['oslc_config.context']
+            if 'vvc.configuration' in queryparams:
+                del queryparams['vvc.configuration']
 
         if args.module:
             # get the query capability base URL for requirements
@@ -1612,9 +1621,9 @@ class RMApp(_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_Syst
             # query for a title and for format=module
             modules = queryon.execute_oslc_query(
                 qcbase,
-                whereterms=[['dcterms:title','=',f'"{args.module}"'], ['rdm_types:ArtifactFormat','=','jazz_rm:Module']],
+                whereterms=[['dcterms:title','=',f'"{args.module}"'], ['rdf:type','=','jazz_rm:Module']],
                 select=['*'],
-                prefixes={rdfxml.RDF_DEFAULT_PREFIX["dcterms"]:'dcterms',rdfxml.RDF_DEFAULT_PREFIX["rdm_types"]:'rdm_types',rdfxml.RDF_DEFAULT_PREFIX["jazz_rm"]:'jazz_rm'})
+                prefixes={rdfxml.RDF_DEFAULT_PREFIX["dcterms"]:'dcterms',rdfxml.RDF_DEFAULT_PREFIX["jazz_rm"]:'jazz_rm'})
 
             if len(modules)==0:
                 raise Exception( f"No module '{args.module}' with that name in {args.project} {args.component}" )
@@ -1623,6 +1632,7 @@ class RMApp(_app._App, oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_Syst
                     print( f'{k} {v.get("dcterms:title","")}' )
                 raise Exception( "More than one module with that name in {args.project} {args.component}" )
             moduleuuid = list(modules.keys())[0].rsplit("/",1)[1]
+#            print( f"Module is {list(modules.keys())[0]} {moduleuuid}" )
 #            queryparams['moduleUri'] = list(modules.keys())[0]
             queryparams['moduleUri'] = moduleuuid
 
