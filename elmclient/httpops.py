@@ -891,8 +891,19 @@ class HttpRequest():
                 # this may be because this GET doesn't have headers like OSLC-Core-Version.
                 # Solution is not to follow redirects and ensure that the original GET is repeated, i.e. with the correct headers :-)
                 auth_url_response = self._session.get( str(ap_redirect_url), auth=(username, appassword), headers={ "User-Agent":"Python2 app-password-enabled" }, allow_redirects=False )  # Load up them cookies!
-
-                return None
+                self.log_redirection_history(auth_url_response, intent="JAS Final Basic Auth", donotlogbody=True)
+                status_code = auth_url_response.status_code
+                if 200 <= status_code < 300:
+                    return None
+                elif status_code == 303:
+                    # TODO: We should checke auth_url_response.headers.get("Location")
+                    return None
+                elif status_code == 401:
+                    raise Exception('JAS Auth failed: Invalid username or application password.')
+                elif status_code == 402:
+                    raise Exception('JAS Auth succeeded but access is forbidden.')
+                else:
+                    raise Exception(f'JAS Unexpected response: {status_code}')
                 
             else:
                 if auth_url_response.headers.get('X-JSA-LOGIN-REQUIRED', "") != 'true':
