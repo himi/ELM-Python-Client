@@ -247,6 +247,7 @@ class _Project(oslcqueryapi._OSLCOperations_Mixin, _typesystem.Type_System_Mixin
 #                    print( f"Checking {config=} for {self.project_uri=}" )
                     if config['componentUri'] == self.project_uri:
                         config_uri = config['configurationUri']
+                        break
             if not config_uri:
                 raise Exception( 'Cannot find configuration [%s] in project [%s]' % (name_or_uri, self.uri))
         else:
